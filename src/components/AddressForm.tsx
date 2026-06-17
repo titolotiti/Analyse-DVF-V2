@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 
 interface AnalyzeParams {
   adresse: string;
@@ -18,11 +18,12 @@ interface Props {
   loading: boolean;
 }
 
-function parseSectionList(raw: string): string[] {
-  return raw
-    .split(/[,;\s]+/)
-    .map((s) => s.trim().toUpperCase())
-    .filter((s) => s.length === 5);
+function parseSectionList(raw: string): { valid: string[]; ambiguous: string[] } {
+  const tokens = raw.split(/[,;\s]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+  return {
+    valid:     tokens.filter((s) => s.length === 10),
+    ambiguous: tokens.filter((s) => s.length === 5),
+  };
 }
 
 export default function AddressForm({ onSubmit, loading }: Props) {
@@ -36,6 +37,10 @@ export default function AddressForm({ onSubmit, loading }: Props) {
   const [forceIncludeRaw,   setForceIncludeRaw]   = useState('');
   const [forceExcludeRaw,   setForceExcludeRaw]   = useState('');
 
+  const includeResult = parseSectionList(forceIncludeRaw);
+  const excludeResult = parseSectionList(forceExcludeRaw);
+  const ambiguousAll  = [...includeResult.ambiguous, ...excludeResult.ambiguous];
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!adresse.trim()) return;
@@ -46,8 +51,8 @@ export default function AddressForm({ onSubmit, loading }: Props) {
       date_fin:                 dateFin,
       distance_max_section_m:   distMaxSection,
       nombre_sections_voisines: nbSectionsMax,
-      sections_force_include:   parseSectionList(forceIncludeRaw),
-      sections_force_exclude:   parseSectionList(forceExcludeRaw),
+      sections_force_include:   includeResult.valid,
+      sections_force_exclude:   excludeResult.valid,
     });
   }
 
@@ -164,11 +169,11 @@ export default function AddressForm({ onSubmit, loading }: Props) {
                   type="text"
                   value={forceIncludeRaw}
                   onChange={(e) => setForceIncludeRaw(e.target.value)}
-                  placeholder="Ex : 0000A, 0000I, 0000J"
+                  placeholder="Ex : 920440000A, 920510000I"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  Codes section (5 caractères). Incluses quelle que soit la distance.
+                  Clé complète 10 caractères (commune + section). Incluses quelle que soit la distance.
                 </p>
               </div>
 
@@ -180,13 +185,22 @@ export default function AddressForm({ onSubmit, loading }: Props) {
                   type="text"
                   value={forceExcludeRaw}
                   onChange={(e) => setForceExcludeRaw(e.target.value)}
-                  placeholder="Ex : 0000B"
+                  placeholder="Ex : 920440000B"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                 />
                 <p className="text-xs text-gray-400 mt-1">
                   Exclues même si elles seraient éligibles automatiquement.
                 </p>
               </div>
+
+              {ambiguousAll.length > 0 && (
+                <div className="col-span-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                  <strong>Section ambiguë</strong> — utilisez la clé complète (commune + section, 10 caractères) :{' '}
+                  {ambiguousAll.map((s) => <code key={s} className="font-mono bg-amber-100 px-1 rounded">{s}</code>).reduce<React.ReactNode[]>((acc, el, i) => i === 0 ? [el] : [...acc, ', ', el], [])}
+                  <br />
+                  Exemple : <code className="font-mono">920440000A</code> au lieu de <code className="font-mono">0000A</code>
+                </div>
+              )}
             </div>
           </div>
         )}
