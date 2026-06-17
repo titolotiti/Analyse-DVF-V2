@@ -45,6 +45,8 @@ export async function POST(req: NextRequest) {
     if (!perimetre) {
       console.log('[analyze] FALLBACK MODE: perimetre is null, using haversine radius filter');
       avertissements.push('API cadastre indisponible — filtre de secours par rayon géographique activé.');
+    } else {
+      avertissements.push('Périmètre cadastral V1 : section cible uniquement — pas d\'adjacence géométrique complète.');
     }
 
     const allRawRows = [];
