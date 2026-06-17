@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Périmètre cadastral (section cible + sections adjacentes géométriquement)
     console.log('[analyze] calling getCadastrePerimetre…');
-    const perimetre = await getCadastrePerimetre(geocode.lat, geocode.lon, rayon_m);
+    const perimetre = await getCadastrePerimetre(geocode.lat, geocode.lon, rayon_m, geocode.citycode);
     console.log(`[analyze] getCadastrePerimetre result: ${perimetre ? `OK (${perimetre.sections_autorisees.length} sections, fallback=${perimetre.fallback_haversine})` : 'null → haversine fallback'}`);
 
     const dept = geocode.departement;
