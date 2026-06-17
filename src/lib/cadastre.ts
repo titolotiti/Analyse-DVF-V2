@@ -36,10 +36,19 @@ interface ParcelleProps {
 async function fetchParcelleAtPoint(lat: number, lon: number): Promise<CadastreResult | null> {
   try {
     const url = `${APICARTO}/parcelle?lon=${lon}&lat=${lat}&srid=4326`;
+    console.log(`[cadastre] fetchParcelleAtPoint → ${url}`);
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
+    console.log(`[cadastre] fetchParcelleAtPoint ← HTTP ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '(unreadable)');
+      console.log(`[cadastre] fetchParcelleAtPoint error body: ${body.slice(0, 200)}`);
+      return null;
+    }
     const data = await res.json() as { features?: { properties: ParcelleProps }[] };
-    if (!data.features || data.features.length === 0) return null;
+    if (!data.features || data.features.length === 0) {
+      console.log('[cadastre] fetchParcelleAtPoint: no features in response');
+      return null;
+    }
     const p = data.features[0].properties;
     return {
       id: p.id || p.idu || '',
@@ -48,7 +57,8 @@ async function fetchParcelleAtPoint(lat: number, lon: number): Promise<CadastreR
       commune: p.commune || '',
       prefixe_section: p.prefixesection || '000',
     };
-  } catch {
+  } catch (err) {
+    console.log(`[cadastre] fetchParcelleAtPoint exception: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
@@ -58,12 +68,23 @@ async function fetchParcelleAtPoint(lat: number, lon: number): Promise<CadastreR
 async function fetchSectionAtPoint(lat: number, lon: number): Promise<SectionFeature | null> {
   try {
     const url = `${APICARTO}/section?lon=${lon}&lat=${lat}&srid=4326`;
+    console.log(`[cadastre] fetchSectionAtPoint → ${url}`);
     const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) return null;
+    console.log(`[cadastre] fetchSectionAtPoint ← HTTP ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '(unreadable)');
+      console.log(`[cadastre] fetchSectionAtPoint error body: ${body.slice(0, 200)}`);
+      return null;
+    }
     const data = await res.json() as FeatureCollection;
-    if (!data.features || data.features.length === 0) return null;
+    if (!data.features || data.features.length === 0) {
+      console.log('[cadastre] fetchSectionAtPoint: no features in response');
+      return null;
+    }
+    console.log(`[cadastre] fetchSectionAtPoint: got section idu=${data.features[0].properties.idu}`);
     return data.features[0];
-  } catch {
+  } catch (err) {
+    console.log(`[cadastre] fetchSectionAtPoint exception: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
@@ -74,11 +95,20 @@ async function fetchSectionsByGeom(geom: GeoJSON.Geometry): Promise<SectionFeatu
   try {
     const geomStr = JSON.stringify(geom);
     const url = `${APICARTO}/section?geom=${encodeURIComponent(geomStr)}`;
+    console.log(`[cadastre] fetchSectionsByGeom → ${url.slice(0, 120)}…`);
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!res.ok) return [];
+    console.log(`[cadastre] fetchSectionsByGeom ← HTTP ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '(unreadable)');
+      console.log(`[cadastre] fetchSectionsByGeom error body: ${body.slice(0, 200)}`);
+      return [];
+    }
     const data = await res.json() as FeatureCollection;
+    const count = data.features?.length ?? 0;
+    console.log(`[cadastre] fetchSectionsByGeom: ${count} section(s) returned`);
     return data.features || [];
-  } catch {
+  } catch (err) {
+    console.log(`[cadastre] fetchSectionsByGeom exception: ${err instanceof Error ? err.message : String(err)}`);
     return [];
   }
 }
@@ -141,13 +171,16 @@ export async function getCadastrePerimetre(
   lon: number,
   _rayonM: number
 ): Promise<CadastrePerimetre | null> {
+  console.log(`[cadastre] getCadastrePerimetre START lat=${lat} lon=${lon}`);
   try {
     // 1. Parcelle cible
     const parcelle_cible = await fetchParcelleAtPoint(lat, lon);
+    console.log(`[cadastre] parcelle_cible: ${parcelle_cible ? JSON.stringify(parcelle_cible) : 'null'}`);
 
     // 2. Section cible avec géométrie
     const targetSection = await fetchSectionAtPoint(lat, lon);
     if (!targetSection?.geometry) {
+      console.log('[cadastre] getCadastrePerimetre → null (no targetSection geometry) — FALLBACK TRIGGER');
       return null;
     }
 
@@ -168,8 +201,11 @@ export async function getCadastrePerimetre(
 
     // 4. Tentative via paramètre geom, fallback point-sampling
     let candidates = await fetchSectionsByGeom(expandedBboxGeom);
+    console.log(`[cadastre] candidates after geom query: ${candidates.length}`);
     if (candidates.length <= 1) {
+      console.log('[cadastre] geom query returned ≤1 result, switching to point-sampling');
       candidates = await fetchSectionsByPointSampling(targetSection, buf);
+      console.log(`[cadastre] candidates after point-sampling: ${candidates.length}`);
     }
 
     // S'assurer que la section cible est dans la liste
@@ -235,6 +271,7 @@ export async function getCadastrePerimetre(
       ).values(),
     ];
 
+    console.log(`[cadastre] getCadastrePerimetre SUCCESS: ${sections_autorisees.length} section(s) autorisée(s): ${sections_autorisees.map((s) => s.cle).join(', ')}`);
     return {
       parcelle_cible,
       code_commune_cible,
@@ -245,7 +282,8 @@ export async function getCadastrePerimetre(
       communes_exclues_du_rayon: [],
       fallback_haversine: false,
     };
-  } catch {
+  } catch (err) {
+    console.log(`[cadastre] getCadastrePerimetre exception → null — FALLBACK TRIGGER: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }
