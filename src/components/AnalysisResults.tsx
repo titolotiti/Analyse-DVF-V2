@@ -39,24 +39,83 @@ export default function AnalysisResults({ result, onExport, exportLoading }: Pro
       )}
 
       {/* Contexte */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-2">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-3">
         <h3 className="font-semibold text-gray-800">Périmètre analysé</h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm text-gray-600">
           <div><span className="font-medium">Adresse :</span><br />{result.adresse_analysee}</div>
           <div><span className="font-medium">Commune :</span><br />{result.commune}</div>
           <div><span className="font-medium">Département :</span><br />{result.departement}</div>
-          <div><span className="font-medium">Rayon :</span><br />{result.perimetre_m} m</div>
+          <div><span className="font-medium">Rayon initial :</span><br />{result.perimetre_m} m</div>
         </div>
-        {result.cadastre && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm text-gray-500 pt-2 border-t border-gray-100">
-            <div><span className="font-medium">Parcelle :</span> {result.cadastre.id}</div>
-            <div><span className="font-medium">Section :</span> {result.cadastre.section}</div>
-            <div><span className="font-medium">N° parcelle :</span> {result.cadastre.numero}</div>
+
+        {result.perimetre_cadastral ? (
+          <div className="space-y-2 pt-2 border-t border-gray-100">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm text-gray-600">
+              {result.perimetre_cadastral.parcelle_cible && (
+                <>
+                  <div><span className="font-medium">Parcelle cible :</span><br />{result.perimetre_cadastral.parcelle_cible.id}</div>
+                  <div><span className="font-medium">N° parcelle :</span><br />{result.perimetre_cadastral.parcelle_cible.numero}</div>
+                </>
+              )}
+              <div><span className="font-medium">Section cible :</span><br /><span className="font-mono">{result.perimetre_cadastral.section_cible_complete}</span></div>
+              <div><span className="font-medium">Commune cible :</span><br />{result.perimetre_cadastral.code_commune_cible}</div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-1">
+                Sections retenues ({result.perimetre_cadastral.sections_autorisees.length})
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {result.perimetre_cadastral.sections_autorisees.map((s) => (
+                  <span
+                    key={s.cle}
+                    title={`${s.raison} — ${s.nom_commune}`}
+                    className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-mono ${
+                      s.est_cible
+                        ? 'bg-blue-100 text-blue-800 ring-1 ring-blue-300'
+                        : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {s.section_complete}
+                    <span className="font-sans text-gray-400">{s.nom_commune !== s.code_commune ? s.nom_commune : s.code_commune}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="font-medium text-green-700">Communes incluses : </span>
+                {result.perimetre_cadastral.communes_incluses.map((c) =>
+                  c.nom !== c.code ? `${c.nom} (${c.code})` : c.code
+                ).join(', ')}
+              </div>
+              {result.perimetre_cadastral.communes_exclues_du_rayon.length > 0 && (
+                <div>
+                  <span className="font-medium text-amber-700">Dans le rayon mais non adjacentes (exclues) : </span>
+                  {result.perimetre_cadastral.communes_exclues_du_rayon.join(', ')}
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs text-gray-400">
+              Filtre final : cadastral — sections géométriquement adjacentes à la section cible. Le rayon ({result.perimetre_m} m) sert uniquement à la recherche initiale.
+            </p>
           </div>
+        ) : (
+          <>
+            {result.cadastre && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm text-gray-500 pt-2 border-t border-gray-100">
+                <div><span className="font-medium">Parcelle :</span> {result.cadastre.id}</div>
+                <div><span className="font-medium">Section :</span> {result.cadastre.section}</div>
+                <div><span className="font-medium">N° parcelle :</span> {result.cadastre.numero}</div>
+              </div>
+            )}
+            <p className="text-xs text-gray-400 pt-1">
+              Méthode de secours : rayon géographique (Haversine) — API cadastre indisponible.
+            </p>
+          </>
         )}
-        <p className="text-xs text-gray-400 pt-1">
-          Méthode : rayon géographique autour de l&apos;adresse géocodée (Haversine) — pas une analyse cadastrale exacte.
-        </p>
       </div>
 
       {/* Stats globales */}

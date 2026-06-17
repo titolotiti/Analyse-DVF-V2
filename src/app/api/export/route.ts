@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { geocodeAdresse } from '@/lib/geocode';
-import { getCadastreFromCoords } from '@/lib/cadastre';
+import { getCadastrePerimetre } from '@/lib/cadastre';
 import { fetchDVFRows } from '@/lib/dvf';
-import { processRows } from '@/lib/filters';
+import { processRows, haversineMeters } from '@/lib/filters';
 import { computeGlobalStats, computeTypologieStats } from '@/lib/stats';
 import { generateExcel } from '@/lib/excel';
 import type { AnalysisResult, AnalyzeRequest } from '@/lib/types';
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     }
 
     const geocode = await geocodeAdresse(adresse.trim());
-    const cadastre = await getCadastreFromCoords(geocode.lat, geocode.lon);
+    const perimetre = await getCadastrePerimetre(geocode.lat, geocode.lon, rayon_m);
     const dept = geocode.departement;
 
     const years = getYears(date_debut, date_fin);
@@ -49,10 +49,46 @@ export async function POST(req: NextRequest) {
       rayonM: rayon_m,
       dateDebut: date_debut,
       dateFin: date_fin,
+      perimetre,
     });
 
     const retenues = toutes.filter((t) => t.statut === 'retenue');
     const excluEtAVerifier = toutes.filter((t) => t.statut !== 'retenue');
+
+    // Enrichissement communes
+    if (perimetre) {
+      const codeToNom = new Map<string, string>();
+      for (const t of toutes) {
+        if (t.nom_commune && t.code_commune) codeToNom.set(t.code_commune, t.nom_commune);
+      }
+      for (const row of allRawRows.slice(0, 50000)) {
+        if (row.nom_commune && row.code_commune && !codeToNom.has(row.code_commune)) {
+          codeToNom.set(row.code_commune, row.nom_commune);
+        }
+      }
+      perimetre.sections_autorisees = perimetre.sections_autorisees.map((s) => ({
+        ...s,
+        nom_commune: codeToNom.get(s.code_commune) || s.code_commune,
+      }));
+      perimetre.communes_incluses = perimetre.communes_incluses.map((c) => ({
+        ...c,
+        nom: codeToNom.get(c.code) || c.code,
+      }));
+      const communesAutorisees = new Set(perimetre.communes_incluses.map((c) => c.code));
+      const communesRayon = new Set<string>();
+      for (const row of allRawRows) {
+        const rowLat = parseFloat(row.latitude || '');
+        const rowLon = parseFloat(row.longitude || '');
+        if (!isNaN(rowLat) && !isNaN(rowLon)) {
+          if (haversineMeters(geocode.lat, geocode.lon, rowLat, rowLon) <= rayon_m) {
+            communesRayon.add(row.code_commune);
+          }
+        }
+      }
+      perimetre.communes_exclues_du_rayon = [...communesRayon]
+        .filter((c) => !communesAutorisees.has(c))
+        .map((c) => codeToNom.get(c) || c);
+    }
 
     const stats = computeGlobalStats(toutes, retenues, excluEtAVerifier);
     const statsParTypologie = computeTypologieStats(retenues);
@@ -63,7 +99,8 @@ export async function POST(req: NextRequest) {
       code_commune: geocode.citycode,
       departement: dept,
       geocode,
-      cadastre,
+      cadastre: perimetre?.parcelle_cible || null,
+      perimetre_cadastral: perimetre,
       perimetre_m: rayon_m,
       date_debut,
       date_fin,

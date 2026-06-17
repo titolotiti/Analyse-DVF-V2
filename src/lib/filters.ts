@@ -1,10 +1,10 @@
-import type { DVFTransaction, Typologie, TransactionStatut } from './types';
+import type { DVFTransaction, Typologie, TransactionStatut, CadastrePerimetre } from './types';
 import type { RawDVFRow } from './dvf';
 
 const PRIX_M2_MIN = 500;
 const PRIX_M2_MAX = 35000;
 
-function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
@@ -52,23 +52,37 @@ export interface FilterOptions {
   rayonM: number;
   dateDebut: string;
   dateFin: string;
+  perimetre?: CadastrePerimetre | null;
 }
 
 export function processRows(rows: RawDVFRow[], opts: FilterOptions): DVFTransaction[] {
-  const { lat, lon, rayonM, dateDebut, dateFin } = opts;
+  const { lat, lon, rayonM, dateDebut, dateFin, perimetre } = opts;
   const dateDebutMs = new Date(dateDebut).getTime();
   const dateFinMs = new Date(dateFin).getTime();
 
-  // Pre-filter: date + coords présentes + appartement dans le périmètre
+  // Construction du set de clés autorisées (commune+section_complete = id_parcelle.slice(0,10))
+  const cleAutorisees: Set<string> | null =
+    perimetre && !perimetre.fallback_haversine && perimetre.sections_autorisees.length > 0
+      ? new Set(perimetre.sections_autorisees.map((s) => s.cle))
+      : null;
+
+  // Pre-filter : date + filtre cadastral ou haversine
   const inScope = rows.filter((row) => {
     const d = new Date(row.date_mutation).getTime();
     if (isNaN(d) || d < dateDebutMs || d > dateFinMs) return false;
+
+    if (cleAutorisees) {
+      // Filtre cadastral : id_parcelle.slice(0,10) = code_commune(5) + section_complete(5)
+      const idp = row.id_parcelle || '';
+      if (idp.length < 10) return false;
+      return cleAutorisees.has(idp.slice(0, 10));
+    }
+
+    // Fallback haversine
     const rowLat = parseFloat2(row.latitude);
     const rowLon = parseFloat2(row.longitude);
     if (rowLat === null || rowLon === null) return false;
-    const dist = haversineMeters(lat, lon, rowLat, rowLon);
-    if (dist > rayonM) return false;
-    return true;
+    return haversineMeters(lat, lon, rowLat, rowLon) <= rayonM;
   });
 
   // Grouper par id_mutation pour gérer les ventes multi-locaux
@@ -158,9 +172,11 @@ export function processRows(rows: RawDVFRow[], opts: FilterOptions): DVFTransact
       }
     }
 
-    const sectionCadastrale = first.id_parcelle
-      ? first.id_parcelle.slice(5, 10) 
-      : '';
+    // id_parcelle = commune(5) + section_complete(5) + numero(4)
+    const sectionCadastrale =
+      first.id_parcelle && first.id_parcelle.length >= 10
+        ? first.id_parcelle.slice(5, 10)
+        : '';
 
     transactions.push({
       id_mutation: first.id_mutation,

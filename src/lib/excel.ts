@@ -157,6 +157,7 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
 
   // ── Onglet 6 : Périmètre & méthodologie ─────────────────────────────────────
   const wsMeta = wb.addWorksheet('Périmètre & méthodologie');
+  const pc = result.perimetre_cadastral;
   const metaRows: [string, string | number][] = [
     ['Adresse analysée', result.adresse_analysee],
     ['Latitude', result.geocode.lat],
@@ -164,19 +165,41 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
     ['Score géocodage', result.geocode.score],
     ['Source géocodage', 'Géoplateforme IGN / BAN (fallback)'],
     ['', ''],
-    ['Parcelle cadastrale', result.cadastre?.id || 'Non disponible'],
-    ['Section cadastrale', result.cadastre?.section || 'Non disponible'],
-    ['Numéro parcelle', result.cadastre?.numero || 'Non disponible'],
+    ['Parcelle cible', pc?.parcelle_cible?.id || result.cadastre?.id || 'Non disponible'],
+    ['N° parcelle', pc?.parcelle_cible?.numero || result.cadastre?.numero || 'Non disponible'],
+    ['Section cible (code)', pc?.section_cible_code || result.cadastre?.section || 'Non disponible'],
+    ['Section cible (complète)', pc?.section_cible_complete || 'Non disponible'],
+    ['Commune cible (INSEE)', pc?.code_commune_cible || 'Non disponible'],
     ['', ''],
-    ['Méthode périmètre', `Rayon de ${result.perimetre_m} m autour de l'adresse géocodée (formule de Haversine)`],
-    ['Limites méthodologiques', 'Le rayon géographique ne correspond pas à une analyse cadastrale exacte. Il peut inclure des zones de caractéristiques différentes (copropriétés, immeubles de rapport, etc.).'],
-    ['', ''],
-    ['Source DVF', 'data.gouv.fr – Fichiers Geo-DVF par département et année'],
-    ['URL source', 'https://files.data.gouv.fr/geo-dvf/latest/csv/{année}/departements/{dept}.csv.gz'],
-    ['Filtrage appartements', 'type_local = "Appartement"'],
-    ['Seuil prix aberrant bas', '500 €/m²'],
-    ['Seuil prix aberrant haut', '35 000 €/m²'],
   ];
+
+  if (pc && !pc.fallback_haversine) {
+    metaRows.push(['Méthode périmètre', 'Filtre cadastral — sections géométriquement adjacentes à la section cible']);
+    metaRows.push(['Rayon (usage)', `${result.perimetre_m} m — recherche initiale uniquement, pas filtre final`]);
+    metaRows.push(['', '']);
+    metaRows.push(['Sections retenues', pc.sections_autorisees.length.toString()]);
+    for (const s of pc.sections_autorisees) {
+      metaRows.push([
+        `  Section ${s.section_complete}`,
+        `${s.raison} — commune ${s.nom_commune !== s.code_commune ? `${s.nom_commune} (${s.code_commune})` : s.code_commune}`,
+      ]);
+    }
+    metaRows.push(['', '']);
+    metaRows.push(['Communes incluses', pc.communes_incluses.map((c) => c.nom !== c.code ? `${c.nom} (${c.code})` : c.code).join(', ')]);
+    if (pc.communes_exclues_du_rayon.length > 0) {
+      metaRows.push(['Communes exclues (dans rayon, non adjacentes)', pc.communes_exclues_du_rayon.join(', ')]);
+    }
+  } else {
+    metaRows.push(['Méthode périmètre', `Rayon géographique ${result.perimetre_m} m (Haversine) — fallback API cadastre indisponible`]);
+  }
+
+  metaRows.push(['', '']);
+  metaRows.push(['Source DVF', 'data.gouv.fr – Fichiers Geo-DVF par département et année']);
+  metaRows.push(['URL source', 'https://files.data.gouv.fr/geo-dvf/latest/csv/{année}/departements/{dept}.csv.gz']);
+  metaRows.push(['Filtrage appartements', 'type_local = "Appartement"']);
+  metaRows.push(['Seuil prix aberrant bas', '500 €/m²']);
+  metaRows.push(['Seuil prix aberrant haut', '35 000 €/m²']);
+
   if (result.annees_manquantes.length > 0) {
     metaRows.push(['Années sans données', result.annees_manquantes.join(', ')]);
   }

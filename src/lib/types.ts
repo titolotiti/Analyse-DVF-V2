@@ -17,6 +17,32 @@ export interface CadastreResult {
   prefixe_section: string;
 }
 
+export interface SectionAdjacenteInfo {
+  /** commune (5 chars) + prefixe (3) + section (2) = 10 chars, ex: "920440000C" */
+  cle: string;
+  code_commune: string;
+  nom_commune: string;
+  /** Code section brut de l'API, ex: "0C" */
+  section: string;
+  /** Préfixe de section de l'API, ex: "000" */
+  prefixe: string;
+  /** prefixe + section = 5 chars, ex: "0000C" — correspond à id_parcelle.slice(5,10) */
+  section_complete: string;
+  est_cible: boolean;
+  raison: 'Section cible' | 'Adjacente géométriquement';
+}
+
+export interface CadastrePerimetre {
+  parcelle_cible: CadastreResult | null;
+  code_commune_cible: string;
+  section_cible_code: string;
+  section_cible_complete: string;
+  sections_autorisees: SectionAdjacenteInfo[];
+  communes_incluses: { code: string; nom: string }[];
+  communes_exclues_du_rayon: string[];
+  fallback_haversine: boolean;
+}
+
 export type TransactionStatut = 'retenue' | 'exclue' | 'a_verifier';
 
 export type Typologie = 'T1' | 'T2' | 'T3' | 'T4' | 'T5+' | 'Inconnu';
@@ -79,6 +105,7 @@ export interface AnalysisResult {
   departement: string;
   geocode: GeocodeResult;
   cadastre: CadastreResult | null;
+  perimetre_cadastral: CadastrePerimetre | null;
   perimetre_m: number;
   date_debut: string;
   date_fin: string;
