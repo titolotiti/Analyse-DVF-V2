@@ -33,6 +33,12 @@ export async function POST(req: NextRequest) {
     const anneesMalformes: number[] = [];
     const allRawRows = [];
 
+    if (!perimetre) {
+      avertissements.push('API cadastre indisponible — filtre de secours par rayon géographique activé.');
+    } else {
+      avertissements.push('Périmètre cadastral V1 : section cible uniquement — pas d\'adjacence géométrique complète.');
+    }
+
     for (const year of years) {
       const { rows, missing } = await fetchDVFRows(dept, year);
       if (missing) {
