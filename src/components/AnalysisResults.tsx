@@ -61,26 +61,89 @@ export default function AnalysisResults({ result, onExport, exportLoading }: Pro
               <div><span className="font-medium">Commune cible :</span><br />{result.perimetre_cadastral.code_commune_cible}</div>
             </div>
 
-            <div>
-              <p className="text-xs font-semibold text-gray-700 mb-1">
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-gray-700">
                 Sections retenues ({result.perimetre_cadastral.sections_autorisees.length})
+                <span className="ml-2 font-normal text-gray-400">
+                  — filtre distance ≤ {result.perimetre_cadastral.distance_max_section_m} m
+                </span>
               </p>
-              <div className="flex flex-wrap gap-1">
-                {result.perimetre_cadastral.sections_autorisees.map((s) => (
-                  <span
-                    key={s.cle}
-                    title={`${s.raison} — ${s.nom_commune}`}
-                    className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-mono ${
-                      s.est_cible
-                        ? 'bg-blue-100 text-blue-800 ring-1 ring-blue-300'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    {s.section_complete}
-                    <span className="font-sans text-gray-400">{s.nom_commune !== s.code_commune ? s.nom_commune : s.code_commune}</span>
-                  </span>
-                ))}
+              <div className="overflow-x-auto rounded border border-gray-100">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-gray-500">
+                    <tr>
+                      <th className="px-2 py-1 text-left font-medium">Section</th>
+                      <th className="px-2 py-1 text-left font-medium">Commune</th>
+                      <th className="px-2 py-1 text-right font-medium">Dist. min</th>
+                      <th className="px-2 py-1 text-right font-medium">Nb tx DVF</th>
+                      <th className="px-2 py-1 text-left font-medium">Raison inclusion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.perimetre_cadastral.sections_autorisees.map((s) => (
+                      <tr key={s.cle} className="border-t border-gray-50">
+                        <td className="px-2 py-1 font-mono font-semibold">{s.section_complete}</td>
+                        <td className="px-2 py-1">{s.nom_commune !== s.code_commune ? s.nom_commune : s.code_commune}</td>
+                        <td className="px-2 py-1 text-right">{s.distance_min_m} m</td>
+                        <td className="px-2 py-1 text-right">{s.nb_transactions}</td>
+                        <td className="px-2 py-1">
+                          {s.raison === 'Section cible' && (
+                            <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-800 font-medium">Cible</span>
+                          )}
+                          {s.raison === 'Section voisine (DVF)' && (
+                            <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-800">Proche DVF</span>
+                          )}
+                          {s.raison === 'Forcée manuellement' && (
+                            <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-800">Forcée</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+
+              {result.perimetre_cadastral.sections_candidates_exclues.length > 0 && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700 py-1">
+                    {result.perimetre_cadastral.sections_candidates_exclues.length} section(s) candidate(s) non retenues ▾
+                  </summary>
+                  <div className="overflow-x-auto rounded border border-gray-100 mt-1">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 text-gray-400">
+                        <tr>
+                          <th className="px-2 py-1 text-left font-medium">Section</th>
+                          <th className="px-2 py-1 text-left font-medium">Commune</th>
+                          <th className="px-2 py-1 text-right font-medium">Dist. min</th>
+                          <th className="px-2 py-1 text-right font-medium">Nb tx DVF</th>
+                          <th className="px-2 py-1 text-left font-medium">Raison exclusion</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {result.perimetre_cadastral.sections_candidates_exclues.map((s) => (
+                          <tr key={s.cle} className="border-t border-gray-50 text-gray-500">
+                            <td className="px-2 py-1 font-mono">{s.section_complete}</td>
+                            <td className="px-2 py-1">{s.nom_commune !== s.code_commune ? s.nom_commune : s.code_commune}</td>
+                            <td className="px-2 py-1 text-right">{s.distance_min_m} m</td>
+                            <td className="px-2 py-1 text-right">{s.nb_transactions}</td>
+                            <td className="px-2 py-1">
+                              {s.raison_exclusion === 'Trop éloignée' && (
+                                <span className="text-orange-600">Trop éloignée (&gt; {result.perimetre_cadastral!.distance_max_section_m} m)</span>
+                              )}
+                              {s.raison_exclusion === 'Exclue manuellement' && (
+                                <span className="text-red-600">Exclue manuellement</span>
+                              )}
+                              {s.raison_exclusion === 'Limite dépassée' && (
+                                <span className="text-gray-400">Limite sections voisines atteinte</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -92,14 +155,14 @@ export default function AnalysisResults({ result, onExport, exportLoading }: Pro
               </div>
               {result.perimetre_cadastral.communes_exclues_du_rayon.length > 0 && (
                 <div>
-                  <span className="font-medium text-amber-700">Dans le rayon mais non adjacentes (exclues) : </span>
+                  <span className="font-medium text-amber-700">Dans le rayon mais non retenues : </span>
                   {result.perimetre_cadastral.communes_exclues_du_rayon.join(', ')}
                 </div>
               )}
             </div>
 
             <p className="text-xs text-gray-400">
-              Filtre final : cadastral — sections géométriquement adjacentes à la section cible. Le rayon ({result.perimetre_m} m) sert uniquement à la recherche initiale.
+              Filtre final : cadastral — <span className="font-mono">id_parcelle.slice(0,10)</span> dans la liste des sections retenues. Le rayon ({result.perimetre_m} m) sert uniquement à détecter les sections candidates via les données DVF.
             </p>
           </div>
         ) : (
