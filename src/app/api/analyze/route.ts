@@ -25,9 +25,12 @@ export async function POST(req: NextRequest) {
 
     // 1. Géocodage
     const geocode = await geocodeAdresse(adresse.trim());
+    console.log(`[analyze] geocode OK: label="${geocode.label}" lat=${geocode.lat} lon=${geocode.lon} dept=${geocode.departement}`);
 
     // 2. Périmètre cadastral (section cible + sections adjacentes géométriquement)
+    console.log('[analyze] calling getCadastrePerimetre…');
     const perimetre = await getCadastrePerimetre(geocode.lat, geocode.lon, rayon_m);
+    console.log(`[analyze] getCadastrePerimetre result: ${perimetre ? `OK (${perimetre.sections_autorisees.length} sections, fallback=${perimetre.fallback_haversine})` : 'null → haversine fallback'}`);
 
     const dept = geocode.departement;
     if (!dept) {
@@ -40,6 +43,7 @@ export async function POST(req: NextRequest) {
     const anneesMalformes: number[] = [];
 
     if (!perimetre) {
+      console.log('[analyze] FALLBACK MODE: perimetre is null, using haversine radius filter');
       avertissements.push('API cadastre indisponible — filtre de secours par rayon géographique activé.');
     }
 
