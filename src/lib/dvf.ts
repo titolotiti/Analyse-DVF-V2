@@ -6,7 +6,9 @@ import * as http from 'http';
 import Papa from 'papaparse';
 
 const DVF_BASE_URL = 'https://files.data.gouv.fr/geo-dvf/latest/csv';
-const CACHE_DIR = process.env.DVF_CACHE_DIR || path.join(process.cwd(), 'cache');
+const CACHE_DIR =
+  process.env.DVF_CACHE_DIR ||
+  (process.env.VERCEL ? '/tmp/cache' : path.join(process.cwd(), 'cache'));
 
 export interface RawDVFRow {
   id_mutation: string;
