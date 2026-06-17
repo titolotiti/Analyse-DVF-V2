@@ -174,20 +174,34 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
   ];
 
   if (pc && !pc.fallback_haversine) {
-    metaRows.push(['Méthode périmètre', 'Filtre cadastral — sections géométriquement adjacentes à la section cible']);
-    metaRows.push(['Rayon (usage)', `${result.perimetre_m} m — recherche initiale uniquement, pas filtre final`]);
+    metaRows.push(['Méthode périmètre', 'Filtre cadastral — sections les plus proches détectées via DVF (rayon initial)']);
+    metaRows.push(['Rayon de détection', `${result.perimetre_m} m — détection des sections candidates uniquement, pas filtre final`]);
+    metaRows.push(['Distance max section', `${pc.distance_max_section_m} m — seuil d'inclusion automatique des voisines`]);
+    metaRows.push(['Filtre final', 'id_parcelle.slice(0,10) dans la liste des sections retenues']);
     metaRows.push(['', '']);
     metaRows.push(['Sections retenues', pc.sections_autorisees.length.toString()]);
     for (const s of pc.sections_autorisees) {
+      const commune = s.nom_commune !== s.code_commune ? `${s.nom_commune} (${s.code_commune})` : s.code_commune;
       metaRows.push([
-        `  Section ${s.section_complete}`,
-        `${s.raison} — commune ${s.nom_commune !== s.code_commune ? `${s.nom_commune} (${s.code_commune})` : s.code_commune}`,
+        `  ✓ Section ${s.section_complete}`,
+        `${s.raison} — ${commune} — dist. min ${s.distance_min_m} m — ${s.nb_transactions} tx DVF`,
       ]);
+    }
+    if (pc.sections_candidates_exclues.length > 0) {
+      metaRows.push(['', '']);
+      metaRows.push(['Sections candidates non retenues', pc.sections_candidates_exclues.length.toString()]);
+      for (const s of pc.sections_candidates_exclues) {
+        const commune = s.nom_commune !== s.code_commune ? `${s.nom_commune} (${s.code_commune})` : s.code_commune;
+        metaRows.push([
+          `  ✗ Section ${s.section_complete}`,
+          `${s.raison_exclusion} — ${commune} — dist. min ${s.distance_min_m} m — ${s.nb_transactions} tx DVF`,
+        ]);
+      }
     }
     metaRows.push(['', '']);
     metaRows.push(['Communes incluses', pc.communes_incluses.map((c) => c.nom !== c.code ? `${c.nom} (${c.code})` : c.code).join(', ')]);
     if (pc.communes_exclues_du_rayon.length > 0) {
-      metaRows.push(['Communes exclues (dans rayon, non adjacentes)', pc.communes_exclues_du_rayon.join(', ')]);
+      metaRows.push(['Communes non retenues (dans rayon)', pc.communes_exclues_du_rayon.join(', ')]);
     }
   } else {
     metaRows.push(['Méthode périmètre', `Rayon géographique ${result.perimetre_m} m (Haversine) — fallback API cadastre indisponible`]);
