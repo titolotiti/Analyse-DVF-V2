@@ -29,7 +29,24 @@ export interface SectionAdjacenteInfo {
   /** prefixe + section = 5 chars, ex: "0000C" — correspond à id_parcelle.slice(5,10) */
   section_complete: string;
   est_cible: boolean;
-  raison: 'Section cible' | 'Adjacente géométriquement';
+  raison: 'Section cible' | 'Section voisine (DVF)' | 'Forcée manuellement';
+  /** Distance minimale entre l'adresse et une transaction de cette section (m) */
+  distance_min_m: number;
+  /** Distance moyenne entre l'adresse et les transactions de cette section (m) */
+  distance_moy_m: number;
+  /** Nombre de transactions DVF brutes dans cette section dans le rayon de recherche */
+  nb_transactions: number;
+}
+
+export interface SectionCandidateExclue {
+  cle: string;
+  code_commune: string;
+  nom_commune: string;
+  section_complete: string;
+  distance_min_m: number;
+  distance_moy_m: number;
+  nb_transactions: number;
+  raison_exclusion: 'Trop éloignée' | 'Exclue manuellement' | 'Limite dépassée';
 }
 
 export interface CadastrePerimetre {
@@ -38,6 +55,8 @@ export interface CadastrePerimetre {
   section_cible_code: string;
   section_cible_complete: string;
   sections_autorisees: SectionAdjacenteInfo[];
+  sections_candidates_exclues: SectionCandidateExclue[];
+  distance_max_section_m: number;
   communes_incluses: { code: string; nom: string }[];
   communes_exclues_du_rayon: string[];
   fallback_haversine: boolean;
@@ -123,4 +142,8 @@ export interface AnalyzeRequest {
   rayon_m: number;
   date_debut: string;
   date_fin: string;
+  distance_max_section_m?: number;
+  nombre_sections_voisines?: number;
+  sections_force_include?: string[];
+  sections_force_exclude?: string[];
 }
