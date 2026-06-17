@@ -94,9 +94,9 @@ export interface CadastreOptions {
   nombreSectionsVoisines?: number;
   /** Distance max pour l'inclusion automatique d'une section voisine. Défaut 300 m. */
   distanceMaxSectionM?: number;
-  /** Codes section_complete (5 chars, ex: "0000A") à forcer dans le périmètre, quelle que soit la distance. */
+  /** Clés complètes (10 chars, ex: "920440000A" = commune(5)+section(5)) à forcer dans le périmètre, quelle que soit la distance. */
   sectionsForceInclude?: string[];
-  /** Codes section_complete à exclure explicitement, même s'ils seraient éligibles automatiquement. */
+  /** Clés complètes (10 chars) à exclure explicitement, même si éligibles automatiquement. */
   sectionsForceExclude?: string[];
 }
 
@@ -228,13 +228,13 @@ export async function getCadastrePerimetre(
     for (const c of candidateStats) {
       if (c.cle === targetCle) continue; // already handled
 
-      if (forceExcludeSet.has(c.section_complete)) {
+      if (forceExcludeSet.has(c.cle)) {
         sections_candidates_exclues.push({ ...c, raison_exclusion: 'Exclue manuellement' });
         console.log(`[cadastre]   EXCLU manuellement: ${c.cle} (${c.section_complete}) distMin=${c.distance_min_m}m`);
         continue;
       }
 
-      if (forceIncludeSet.has(c.section_complete)) {
+      if (forceIncludeSet.has(c.cle)) {
         sections_autorisees.push({ ...c, est_cible: false, raison: 'Forcée manuellement' });
         console.log(`[cadastre]   INCLUS forcé: ${c.cle} (${c.section_complete}) distMin=${c.distance_min_m}m`);
         continue;
@@ -257,11 +257,11 @@ export async function getCadastrePerimetre(
       console.log(`[cadastre]   INCLUS voisin: ${c.cle} distMin=${c.distance_min_m}m nbTx=${c.nb_transactions}`);
     }
 
-    // Warn about force-include codes not found in DVF data
-    for (const sc of sectionsForceInclude) {
-      const found = sections_autorisees.some((s) => s.section_complete === sc);
+    // Warn about force-include keys not found in DVF data
+    for (const cle of sectionsForceInclude) {
+      const found = sections_autorisees.some((s) => s.cle === cle);
       if (!found) {
-        console.log(`[cadastre]   WARN force-include "${sc}" non trouvé dans les données DVF du rayon ${rayonM} m`);
+        console.log(`[cadastre]   WARN force-include "${cle}" non trouvé dans les données DVF du rayon ${rayonM} m`);
       }
     }
 
