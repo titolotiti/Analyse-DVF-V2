@@ -159,7 +159,7 @@ export function processRows(rows: RawDVFRow[], opts: FilterOptions): DVFTransact
     }
 
     const sectionCadastrale = first.id_parcelle
-      ? first.id_parcelle.slice(4, 7) // sections dans l'id_parcelle : commune(5)+section(2)+numero(4)
+      ? first.id_parcelle.slice(5, 10) 
       : '';
 
     transactions.push({
