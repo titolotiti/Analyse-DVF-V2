@@ -55,20 +55,26 @@ async function fetchParcelleAtPoint(
     const props = await tryFetchParcelle(url);
     if (!props) continue;
 
-    const result: CadastreResult = {
-      id: props.id || props.idu || '',
-      section: props.section || '',
-      numero: props.numero || '',
-      commune: props.commune || '',
-      prefixe_section: props.prefixesection || '000',
-    };
+    const id = props.id || props.idu || '';
+    const returnedCitycode = id.slice(0, 5);
 
-    if (expectedCitycode && result.commune !== expectedCitycode) {
+    console.log(`[cadastre] fetchParcelleAtPoint (${label}): full props=${JSON.stringify(props)}`);
+    console.log(`[cadastre] fetchParcelleAtPoint (${label}): id=${id} returnedCitycode=${returnedCitycode} expectedCitycode=${expectedCitycode}`);
+
+    if (expectedCitycode && returnedCitycode !== expectedCitycode) {
       console.log(
-        `[cadastre] commune mismatch (${label}): returned=${result.commune}, expected=${expectedCitycode} — skipping`
+        `[cadastre] commune mismatch (${label}): returnedCitycode=${returnedCitycode}, expected=${expectedCitycode} — skipping`
       );
       continue;
     }
+
+    const result: CadastreResult = {
+      id,
+      section: props.section || '',
+      numero: props.numero || '',
+      commune: props.commune || returnedCitycode,
+      prefixe_section: props.prefixesection || '000',
+    };
 
     console.log(`[cadastre] fetchParcelleAtPoint OK (${label}): ${JSON.stringify(result)}`);
     return result;
