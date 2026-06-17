@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     }
 
     const geocode = await geocodeAdresse(adresse.trim());
-    const perimetre = await getCadastrePerimetre(geocode.lat, geocode.lon, rayon_m);
+    const perimetre = await getCadastrePerimetre(geocode.lat, geocode.lon, rayon_m, geocode.citycode);
     const dept = geocode.departement;
 
     const years = getYears(date_debut, date_fin);
