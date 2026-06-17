@@ -136,7 +136,11 @@ export function processRows(rows: RawDVFRow[], opts: FilterOptions): DVFTransact
       if (statut === 'retenue') statut = 'a_verifier';
     }
 
-    if (nombreLots > 1) {
+    if (nombreLots === 2 && appartementsRows.length === 1 && autresRows.length === 0) {
+      // Vente résidentielle standard : 1 appartement + 1 annexe (cave, parking, chambre de service)
+      raisons_flag.push('Multi-lots standard (2 lots) — probablement appartement + annexe');
+      // statut reste 'retenue'
+    } else if (nombreLots > 1) {
       raisons_flag.push(`Mutation multi-lots (${nombreLots} lots)`);
       if (statut === 'retenue') statut = 'a_verifier';
     }
@@ -165,10 +169,10 @@ export function processRows(rows: RawDVFRow[], opts: FilterOptions): DVFTransact
       prixM2 = valeurFonciere / surfaceTotale;
       if (prixM2 < PRIX_M2_MIN) {
         raisons_flag.push(`Prix/m² aberrant bas : ${Math.round(prixM2)} €/m²`);
-        if (statut === 'retenue') statut = 'a_verifier';
+        statut = 'exclue';
       } else if (prixM2 > PRIX_M2_MAX) {
         raisons_flag.push(`Prix/m² aberrant haut : ${Math.round(prixM2)} €/m²`);
-        if (statut === 'retenue') statut = 'a_verifier';
+        statut = 'exclue';
       }
     }
 
