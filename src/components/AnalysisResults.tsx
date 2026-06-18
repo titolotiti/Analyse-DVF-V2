@@ -287,25 +287,32 @@ export default function AnalysisResults({ result, onExport, exportLoading, onRea
             <table className="w-full text-sm">
               <thead className="bg-blue-800 text-white">
                 <tr>
-                  {['Typo', 'Nb transactions', 'Surface moy.', 'Prix moyen/m²', 'Prix médian/m²', 'Min', 'Max'].map((h) => (
-                    <th key={h} className="px-4 py-2.5 text-left font-medium whitespace-nowrap">{h}</th>
+                  {['Typo', 'Nb tx', 'Surf. moy.', 'Moy/m²', 'P10', 'Q1', 'Médiane', 'Q3', 'P90', 'Min retenu', 'Max retenu'].map((h) => (
+                    <th key={h} className="px-3 py-2.5 text-left font-medium whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {result.stats_par_typologie.map((t, i) => (
                   <tr key={t.typologie} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                    <td className="px-4 py-2 font-semibold text-blue-800">{t.typologie}</td>
-                    <td className="px-4 py-2">{t.count}</td>
-                    <td className="px-4 py-2">{fmt(t.surface_moyenne)} m²</td>
-                    <td className="px-4 py-2 font-medium">{fmt(t.prix_moyen_m2)} €</td>
-                    <td className="px-4 py-2">{fmt(t.prix_median_m2)} €</td>
-                    <td className="px-4 py-2 text-gray-500">{fmt(t.min_m2)} €</td>
-                    <td className="px-4 py-2 text-gray-500">{fmt(t.max_m2)} €</td>
+                    <td className="px-3 py-2 font-semibold text-blue-800">{t.typologie}</td>
+                    <td className="px-3 py-2">{t.count}</td>
+                    <td className="px-3 py-2">{fmt(t.surface_moyenne)} m²</td>
+                    <td className="px-3 py-2 font-medium">{fmt(t.prix_moyen_m2)} €</td>
+                    <td className="px-3 py-2 text-indigo-700">{fmt(t.p10_m2)} €</td>
+                    <td className="px-3 py-2">{fmt(t.q1_m2)} €</td>
+                    <td className="px-3 py-2 font-medium">{fmt(t.prix_median_m2)} €</td>
+                    <td className="px-3 py-2">{fmt(t.q3_m2)} €</td>
+                    <td className="px-3 py-2 text-indigo-700">{fmt(t.p90_m2)} €</td>
+                    <td className="px-3 py-2 text-gray-400 text-xs">{fmt(t.min_m2)} €</td>
+                    <td className="px-3 py-2 text-gray-400 text-xs">{fmt(t.max_m2)} €</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <p className="text-xs text-gray-400 italic px-3 py-2 border-t border-gray-100">
+              Les min/max retenus sont sensibles aux valeurs extrêmes. Les percentiles P10/P90 sont à privilégier pour lire la fourchette de marché.
+            </p>
           </div>
         </div>
       )}
