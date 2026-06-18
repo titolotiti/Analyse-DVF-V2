@@ -101,7 +101,11 @@ export interface TypelogieStats {
   count: number;
   surface_moyenne: number;
   prix_moyen_m2: number;
+  p10_m2: number;
+  q1_m2: number;
   prix_median_m2: number;
+  q3_m2: number;
+  p90_m2: number;
   min_m2: number;
   max_m2: number;
 }
