@@ -98,6 +98,8 @@ export interface CadastreOptions {
   sectionsForceInclude?: string[];
   /** Clés complètes (10 chars) à exclure explicitement, même si éligibles automatiquement. */
   sectionsForceExclude?: string[];
+  /** Codes INSEE des communes à inclure. Si vide/absent, toutes les communes candidates sont éligibles. */
+  communesSelectionnees?: string[];
 }
 
 export async function getCadastrePerimetre(
@@ -109,10 +111,11 @@ export async function getCadastrePerimetre(
   const {
     expectedCitycode,
     dvfRows = [],
-    nombreSectionsVoisines = 4,
-    distanceMaxSectionM   = 300,
-    sectionsForceInclude  = [],
-    sectionsForceExclude  = [],
+    nombreSectionsVoisines  = 4,
+    distanceMaxSectionM     = 300,
+    sectionsForceInclude    = [],
+    sectionsForceExclude    = [],
+    communesSelectionnees   = [],
   } = opts;
 
   console.log(
@@ -166,6 +169,15 @@ export async function getCadastrePerimetre(
     }
 
     console.log(`[cadastre] ${sectionAcc.size} sections candidates dans le rayon ${rayonM} m`);
+
+    // ── communes_candidates : toutes les communes détectées dans le rayon ────────
+    const communeCandidateMap = new Map<string, string>();
+    for (const [, acc] of sectionAcc) {
+      if (!communeCandidateMap.has(acc.code_commune)) {
+        communeCandidateMap.set(acc.code_commune, acc.nom_commune);
+      }
+    }
+    const communes_candidates = [...communeCandidateMap.entries()].map(([code, nom]) => ({ code, nom }));
 
     // ── Build candidate list with stats ──────────────────────────────────────
     interface SectionStats {
@@ -240,6 +252,12 @@ export async function getCadastrePerimetre(
         continue;
       }
 
+      if (communesSelectionnees.length > 0 && !communesSelectionnees.includes(c.code_commune)) {
+        sections_candidates_exclues.push({ ...c, raison_exclusion: 'Commune non sélectionnée' });
+        console.log(`[cadastre]   EXCLU commune non sélectionnée: ${c.cle} (${c.code_commune})`);
+        continue;
+      }
+
       if (c.distance_min_m > distanceMaxSectionM) {
         sections_candidates_exclues.push({ ...c, raison_exclusion: 'Trop éloignée' });
         console.log(`[cadastre]   EXCLU trop éloigné: ${c.cle} distMin=${c.distance_min_m}m > ${distanceMaxSectionM}m`);
@@ -304,6 +322,7 @@ export async function getCadastrePerimetre(
       distance_max_section_m: distanceMaxSectionM,
       communes_incluses,
       communes_exclues_du_rayon,
+      communes_candidates,
       fallback_haversine: false,
     };
   } catch (err) {
