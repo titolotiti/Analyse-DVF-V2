@@ -10,6 +10,11 @@ interface AnalyzeParams {
   rayon_m: number;
   date_debut: string;
   date_fin: string;
+  distance_max_section_m: number;
+  nombre_sections_voisines: number;
+  sections_force_include: string[];
+  sections_force_exclude: string[];
+  communes_selectionnees?: string[];
 }
 
 export default function HomePage() {
@@ -86,6 +91,11 @@ export default function HomePage() {
     }
   }
 
+  async function handleReanalyze(communesSelectionnees: string[]) {
+    if (!lastParams) return;
+    await handleAnalyze({ ...lastParams, communes_selectionnees: communesSelectionnees });
+  }
+
   return (
     <div className="space-y-6">
       <div className="text-sm text-gray-500 bg-blue-50 border border-blue-100 rounded-lg px-4 py-3">
@@ -116,6 +126,7 @@ export default function HomePage() {
           result={result}
           onExport={handleExport}
           exportLoading={exportLoading}
+          onReanalyze={handleReanalyze}
         />
       )}
     </div>
