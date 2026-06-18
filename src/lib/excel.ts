@@ -179,6 +179,21 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
     metaRows.push(['Distance max section', `${pc.distance_max_section_m} m — seuil d'inclusion automatique des voisines`]);
     metaRows.push(['Filtre final', 'id_parcelle.slice(0,10) dans la liste des sections retenues']);
     metaRows.push(['', '']);
+
+    // Communes candidates (toutes détectées dans le rayon)
+    const communesIncluesSet = new Set(pc.communes_incluses.map((c) => c.code));
+    metaRows.push(['Communes candidates (rayon)', `${pc.communes_candidates.length} commune(s) détectée(s)`]);
+    for (const c of pc.communes_candidates) {
+      const incluse = communesIncluesSet.has(c.code);
+      const label = c.nom !== c.code ? `${c.nom} (${c.code})` : c.code;
+      metaRows.push([`  ${incluse ? '✓' : '✗'} ${label}`, incluse ? 'Incluse' : 'Non retenue']);
+    }
+    metaRows.push(['Communes incluses', pc.communes_incluses.map((c) => c.nom !== c.code ? `${c.nom} (${c.code})` : c.code).join(', ')]);
+    if (pc.communes_exclues_du_rayon.length > 0) {
+      metaRows.push(['Communes non retenues (dans rayon)', pc.communes_exclues_du_rayon.join(', ')]);
+    }
+    metaRows.push(['', '']);
+
     metaRows.push(['Sections retenues', pc.sections_autorisees.length.toString()]);
     for (const s of pc.sections_autorisees) {
       const commune = s.nom_commune !== s.code_commune ? `${s.nom_commune} (${s.code_commune})` : s.code_commune;
@@ -197,11 +212,6 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
           `${s.raison_exclusion} — ${commune} — dist. min ${s.distance_min_m} m — ${s.nb_transactions} tx DVF`,
         ]);
       }
-    }
-    metaRows.push(['', '']);
-    metaRows.push(['Communes incluses', pc.communes_incluses.map((c) => c.nom !== c.code ? `${c.nom} (${c.code})` : c.code).join(', ')]);
-    if (pc.communes_exclues_du_rayon.length > 0) {
-      metaRows.push(['Communes non retenues (dans rayon)', pc.communes_exclues_du_rayon.join(', ')]);
     }
   } else {
     metaRows.push(['Méthode périmètre', `Rayon géographique ${result.perimetre_m} m (Haversine) — fallback API cadastre indisponible`]);
