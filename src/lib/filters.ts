@@ -106,8 +106,11 @@ export function processRows(rows: RawDVFRow[], opts: FilterOptions): DVFTransact
       : null;
 
     const typeLocaux = [...new Set(mutRows.map((r) => r.type_local))];
-    const appartementsRows = mutRows.filter((r) => r.type_local === 'Appartement');
-    const autresRows = mutRows.filter((r) => r.type_local !== 'Appartement');
+    const appartementsRows          = mutRows.filter((r) => r.type_local === 'Appartement');
+    const dependancesRows           = mutRows.filter((r) => r.type_local === 'Dépendance');
+    const locauxProblematiquesRows  = mutRows.filter(
+      (r) => r.type_local !== 'Appartement' && r.type_local !== 'Dépendance'
+    );
 
     const raisons_flag: string[] = [];
     let statut: TransactionStatut = 'retenue';
@@ -125,9 +128,10 @@ export function processRows(rows: RawDVFRow[], opts: FilterOptions): DVFTransact
       statut = 'exclue';
     }
 
-    if (autresRows.length > 0 && appartementsRows.length > 0) {
-      const autresTypes = [...new Set(autresRows.map((r) => r.type_local))].join(', ');
-      raisons_flag.push(`Vente mixte : appartement + ${autresTypes}`);
+    // Vente mixte avec locaux problématiques (maison, commercial, bureau…)
+    if (locauxProblematiquesRows.length > 0 && appartementsRows.length > 0) {
+      const types = [...new Set(locauxProblematiquesRows.map((r) => r.type_local))].join(', ');
+      raisons_flag.push(`Vente mixte : appartement + ${types}`);
       if (statut === 'retenue') statut = 'a_verifier';
     }
 
@@ -136,9 +140,19 @@ export function processRows(rows: RawDVFRow[], opts: FilterOptions): DVFTransact
       if (statut === 'retenue') statut = 'a_verifier';
     }
 
-    if (nombreLots === 2 && appartementsRows.length === 1 && autresRows.length === 0) {
-      // Vente résidentielle standard : 1 appartement + 1 annexe (cave, parking, chambre de service)
-      raisons_flag.push('Multi-lots standard (2 lots) — probablement appartement + annexe');
+    // Appartement + dépendance(s) uniquement, sans local problématique
+    const isSimpleWithAnnexe = appartementsRows.length === 1 && locauxProblematiquesRows.length === 0;
+
+    if (dependancesRows.length > 0 && isSimpleWithAnnexe) {
+      raisons_flag.push('Appartement + dépendance — conservé car prix/m² cohérent');
+      // statut reste 'retenue' (sauf si prix aberrant plus bas)
+    }
+
+    // Multi-lots
+    if (nombreLots === 2 && isSimpleWithAnnexe) {
+      if (dependancesRows.length === 0) {
+        raisons_flag.push('Multi-lots standard (2 lots) — probablement appartement + annexe');
+      }
       // statut reste 'retenue'
     } else if (nombreLots > 1) {
       raisons_flag.push(`Mutation multi-lots (${nombreLots} lots)`);
