@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { geocodeAdresse } from '@/lib/geocode';
 import { getCadastrePerimetre } from '@/lib/cadastre';
 import { fetchDVFRows } from '@/lib/dvf';
-import { processRows, haversineMeters } from '@/lib/filters';
+import { processRows } from '@/lib/filters';
 import { computeGlobalStats, computeTypologieStats } from '@/lib/stats';
 import { generateExcel } from '@/lib/excel';
 import type { AnalysisResult, AnalyzeRequest } from '@/lib/types';
@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
       nombre_sections_voisines = 4,
       sections_force_include   = [],
       sections_force_exclude   = [],
+      communes_selectionnees   = [],
     } = body;
 
     if (!adresse || adresse.trim().length < 5) {
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
     const geocode = await geocodeAdresse(adresse.trim());
     const dept    = geocode.departement;
 
-    // 2. Chargement DVF (avant le périmètre cadastral)
+    // 2. Chargement DVF
     const years = getYears(date_debut, date_fin);
     const avertissements: string[] = [];
     const anneesMalformes: number[] = [];
@@ -55,12 +56,13 @@ export async function POST(req: NextRequest) {
 
     // 3. Périmètre cadastral V2
     const perimetre = await getCadastrePerimetre(geocode.lat, geocode.lon, rayon_m, {
-      expectedCitycode:       geocode.citycode,
-      dvfRows:                allRawRows,
+      expectedCitycode:      geocode.citycode,
+      dvfRows:               allRawRows,
       nombreSectionsVoisines: nombre_sections_voisines,
-      distanceMaxSectionM:    distance_max_section_m,
-      sectionsForceInclude:   sections_force_include,
-      sectionsForceExclude:   sections_force_exclude,
+      distanceMaxSectionM:   distance_max_section_m,
+      sectionsForceInclude:  sections_force_include,
+      sectionsForceExclude:  sections_force_exclude,
+      communesSelectionnees: communes_selectionnees,
     });
 
     if (!perimetre) {
@@ -87,37 +89,33 @@ export async function POST(req: NextRequest) {
     const retenues         = toutes.filter((t) => t.statut === 'retenue');
     const excluEtAVerifier = toutes.filter((t) => t.statut !== 'retenue');
 
-    // 5. Enrichissement noms (filet de sécurité)
+    // 5. Enrichissement noms
     if (perimetre) {
       const codeToNom = new Map<string, string>();
       for (const t of toutes) {
         if (t.nom_commune && t.code_commune) codeToNom.set(t.code_commune, t.nom_commune);
       }
+      const enrichNom = (code: string, nom: string) =>
+        nom !== code ? nom : (codeToNom.get(code) || code);
+
       perimetre.sections_autorisees = perimetre.sections_autorisees.map((s) => ({
         ...s,
-        nom_commune: s.nom_commune !== s.code_commune ? s.nom_commune : (codeToNom.get(s.code_commune) || s.nom_commune),
+        nom_commune: enrichNom(s.code_commune, s.nom_commune),
       }));
       perimetre.communes_incluses = perimetre.communes_incluses.map((c) => ({
         ...c,
-        nom: c.nom !== c.code ? c.nom : (codeToNom.get(c.code) || c.code),
+        nom: enrichNom(c.code, c.nom),
+      }));
+      perimetre.communes_candidates = perimetre.communes_candidates.map((c) => ({
+        ...c,
+        nom: enrichNom(c.code, c.nom),
       }));
 
+      // Communes candidates non retenues = candidates - incluses
       const communesAutorisees = new Set(perimetre.communes_incluses.map((c) => c.code));
-      const communesRayon = new Set<string>();
-      for (const row of allRawRows) {
-        const rowLat = parseFloat(row.latitude || '');
-        const rowLon = parseFloat(row.longitude || '');
-        if (!isNaN(rowLat) && !isNaN(rowLon)) {
-          if (haversineMeters(geocode.lat, geocode.lon, rowLat, rowLon) <= rayon_m) {
-            communesRayon.add(row.code_commune);
-          }
-        }
-      }
-      const excludedExtra = [...communesRayon]
-        .filter((c) => !communesAutorisees.has(c))
-        .map((c) => codeToNom.get(c) || c);
-      const excluesSet = new Set([...perimetre.communes_exclues_du_rayon, ...excludedExtra]);
-      perimetre.communes_exclues_du_rayon = [...excluesSet];
+      perimetre.communes_exclues_du_rayon = perimetre.communes_candidates
+        .filter((c) => !communesAutorisees.has(c.code))
+        .map((c) => c.nom !== c.code ? `${c.nom} (${c.code})` : c.code);
     }
 
     // 6. Statistiques
