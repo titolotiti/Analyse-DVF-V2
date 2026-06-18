@@ -143,16 +143,29 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
   const wsTypo = wb.addWorksheet('Prix par typologie');
   const typoHeaders = wsTypo.addRow([
     'Typologie', 'Nb transactions', 'Surface moy. (m²)',
-    'Prix moy. €/m²', 'Prix médian €/m²', 'Min €/m²', 'Max €/m²',
+    'Prix moy. €/m²', 'P10 €/m²', 'Q1 €/m²', 'Médiane €/m²', 'Q3 €/m²', 'P90 €/m²',
+    'Min retenu €/m²', 'Max retenu €/m²',
   ]);
   headerStyle(wsTypo, typoHeaders);
 
   for (const t of result.stats_par_typologie) {
     wsTypo.addRow([
       t.typologie, t.count, t.surface_moyenne,
-      t.prix_moyen_m2, t.prix_median_m2, t.min_m2, t.max_m2,
+      t.prix_moyen_m2, t.p10_m2, t.q1_m2, t.prix_median_m2, t.q3_m2, t.p90_m2,
+      t.min_m2, t.max_m2,
     ]).height = 16;
   }
+
+  // Note méthodologique sous le tableau
+  wsTypo.addRow([]);
+  const noteRow = wsTypo.addRow([
+    'Note méthodologique',
+    'Les min/max retenus sont sensibles aux valeurs extrêmes. Les percentiles P10/P90 sont à privilégier pour lire la fourchette de marché.',
+  ]);
+  noteRow.height = 22;
+  noteRow.getCell(1).font = { bold: true, italic: true, color: { argb: 'FF555555' }, size: 9 };
+  noteRow.getCell(2).font = { italic: true, color: { argb: 'FF555555' }, size: 9 };
+
   autoWidth(wsTypo);
 
   // ── Onglet 6 : Périmètre & méthodologie ─────────────────────────────────────
@@ -221,8 +234,8 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
   metaRows.push(['Source DVF', 'data.gouv.fr – Fichiers Geo-DVF par département et année']);
   metaRows.push(['URL source', 'https://files.data.gouv.fr/geo-dvf/latest/csv/{année}/departements/{dept}.csv.gz']);
   metaRows.push(['Filtrage appartements', 'type_local = "Appartement"']);
-  metaRows.push(['Seuil prix aberrant bas', '500 €/m²']);
-  metaRows.push(['Seuil prix aberrant haut', '35 000 €/m²']);
+  metaRows.push(['Seuil prix aberrant bas', '4 000 €/m²']);
+  metaRows.push(['Seuil prix aberrant haut', '22 000 €/m²']);
 
   if (result.annees_manquantes.length > 0) {
     metaRows.push(['Années sans données', result.annees_manquantes.join(', ')]);
