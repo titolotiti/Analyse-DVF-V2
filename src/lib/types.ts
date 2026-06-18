@@ -46,7 +46,7 @@ export interface SectionCandidateExclue {
   distance_min_m: number;
   distance_moy_m: number;
   nb_transactions: number;
-  raison_exclusion: 'Trop éloignée' | 'Exclue manuellement' | 'Limite dépassée';
+  raison_exclusion: 'Trop éloignée' | 'Exclue manuellement' | 'Limite dépassée' | 'Commune non sélectionnée';
 }
 
 export interface CadastrePerimetre {
@@ -59,6 +59,8 @@ export interface CadastrePerimetre {
   distance_max_section_m: number;
   communes_incluses: { code: string; nom: string }[];
   communes_exclues_du_rayon: string[];
+  /** Toutes les communes ayant des transactions DVF dans le rayon (incluses ou non). */
+  communes_candidates: { code: string; nom: string }[];
   fallback_haversine: boolean;
 }
 
@@ -146,4 +148,5 @@ export interface AnalyzeRequest {
   nombre_sections_voisines?: number;
   sections_force_include?: string[];
   sections_force_exclude?: string[];
+  communes_selectionnees?: string[];
 }
