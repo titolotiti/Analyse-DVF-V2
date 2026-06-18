@@ -62,7 +62,11 @@ export function computeTypologieStats(retenues: DVFTransaction[]): TypelogieStat
       count: subset.length,
       surface_moyenne: round2(mean(surfaces)),
       prix_moyen_m2: round2(mean(prix)),
+      p10_m2: round2(quantile(prix, 0.10)),
+      q1_m2: round2(quantile(prix, 0.25)),
       prix_median_m2: round2(median(prix)),
+      q3_m2: round2(quantile(prix, 0.75)),
+      p90_m2: round2(quantile(prix, 0.90)),
       min_m2: prix.length > 0 ? round2(Math.min(...prix)) : 0,
       max_m2: prix.length > 0 ? round2(Math.max(...prix)) : 0,
     };
