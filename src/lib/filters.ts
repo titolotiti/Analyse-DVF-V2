@@ -1,8 +1,8 @@
 import type { DVFTransaction, Typologie, TransactionStatut, CadastrePerimetre } from './types';
 import type { RawDVFRow } from './dvf';
 
-const PRIX_M2_MIN = 500;
-const PRIX_M2_MAX = 35000;
+const PRIX_M2_MIN = 4000;
+const PRIX_M2_MAX = 22000;
 
 export function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
