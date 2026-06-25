@@ -1,5 +1,7 @@
 import ExcelJS from 'exceljs';
-import type { AnalysisResult, DVFTransaction, TypelogieStats } from './types';
+import JSZip from 'jszip';
+import type { AnalysisResult, DVFTransaction, ComparatifAnnuelRow } from './types';
+import { computeComparatif2024vs2025 } from './stats';
 
 function headerStyle(ws: ExcelJS.Worksheet, row: ExcelJS.Row) {
   row.eachCell((cell) => {
@@ -71,7 +73,6 @@ function fillTransactionRows(ws: ExcelJS.Worksheet, transactions: DVFTransaction
       ...(avecStatut ? [t.statut, t.raisons_flag.join(' | ')] : []),
     ]);
 
-    // Coloration ligne selon statut
     if (avecStatut) {
       const statut = t.statut;
       const color = statut === 'exclue' ? 'FFFFDCDC' : statut === 'a_verifier' ? 'FFFFF3CD' : 'FFEBF7EB';
@@ -85,6 +86,379 @@ function fillTransactionRows(ws: ExcelJS.Worksheet, transactions: DVFTransaction
 
   autoWidth(ws);
 }
+
+// ── Onglet Comparatif 2024-2025 ───────────────────────────────────────────────
+
+function addComparatifSheet(wb: ExcelJS.Workbook, data: ComparatifAnnuelRow[]) {
+  const ws = wb.addWorksheet('Comparatif 2024-2025');
+
+  // En-têtes
+  const headerRow = ws.addRow([
+    'Typologie',
+    'Nb 2024',
+    'Prix moy. 2024 €/m²',
+    'Nb 2025',
+    'Prix moy. 2025 €/m²',
+    'Écart €/m²',
+    'Écart %',
+  ]);
+  headerStyle(ws, headerRow);
+
+  // Données
+  data.forEach((row, i) => {
+    const excelRow = i + 2; // row 2 = T1, row 7 = TOTAL
+    const isTotal = row.typologie === 'TOTAL';
+    const r = ws.addRow([
+      row.typologie,
+      row.nb_2024 > 0 ? row.nb_2024 : null,
+      row.prix_moy_2024,
+      row.nb_2025 > 0 ? row.nb_2025 : null,
+      row.prix_moy_2025,
+      // Écart et Écart % en formule — se recalculent si l'utilisateur édite les prix
+      { formula: `IF(AND(ISNUMBER(C${excelRow}),ISNUMBER(E${excelRow})),E${excelRow}-C${excelRow},"")` },
+      { formula: `IF(AND(ISNUMBER(C${excelRow}),ISNUMBER(E${excelRow}),C${excelRow}<>0),E${excelRow}/C${excelRow}-1,"")` },
+    ]);
+
+    r.height = 18;
+
+    // Style de la ligne TOTAL
+    if (isTotal) {
+      r.eachCell((cell) => {
+        cell.font = { bold: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F5FB' } };
+        cell.border = {
+          top: { style: 'medium', color: { argb: 'FF1E3A5F' } },
+        };
+      });
+    }
+
+    // Format numérique des colonnes de prix
+    const fmtPrix = '#,##0 "€/m²"';
+    const fmtNb = '#,##0';
+    r.getCell(2).numFmt = fmtNb;
+    r.getCell(3).numFmt = fmtPrix;
+    r.getCell(4).numFmt = fmtNb;
+    r.getCell(5).numFmt = fmtPrix;
+    r.getCell(6).numFmt = '#,##0 "€/m²";-#,##0 "€/m²"';
+    r.getCell(7).numFmt = '0.0%';
+
+    // Coloration de l'écart % : positif = vert pâle, négatif = rouge pâle
+    if (row.ecart_pct != null) {
+      const pctCell = r.getCell(7);
+      const ecart = row.ecart_pct;
+      if (ecart > 0) {
+        pctCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEBF7EB' } };
+      } else if (ecart < 0) {
+        pctCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFDCDC' } };
+      }
+    }
+  });
+
+  // Note source sous le tableau (row 9, laissant row 8 vide)
+  ws.addRow([]);
+  const srcRow = ws.addRow(['Source : DVF — données.gouv.fr']);
+  srcRow.getCell(1).font = { italic: true, color: { argb: 'FF888888' }, size: 9 };
+  srcRow.height = 14;
+
+  // Largeurs colonnes
+  ws.getColumn(1).width = 14;
+  ws.getColumn(2).width = 10;
+  ws.getColumn(3).width = 22;
+  ws.getColumn(4).width = 10;
+  ws.getColumn(5).width = 22;
+  ws.getColumn(6).width = 16;
+  ws.getColumn(7).width = 12;
+
+  // Gel de la ligne d'en-têtes
+  ws.views = [{ state: 'frozen', xSplit: 0, ySplit: 1 }];
+}
+
+// ── Injection Open XML du graphique via JSZip ─────────────────────────────────
+
+function buildChartXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace
+  xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:date1904 val="0"/>
+  <c:lang val="fr-FR"/>
+  <c:roundedCorners val="0"/>
+  <c:chart>
+    <c:title>
+      <c:tx><c:rich>
+        <a:bodyPr/><a:lstStyle/>
+        <a:p>
+          <a:pPr><a:defRPr b="1"/></a:pPr>
+          <a:r>
+            <a:rPr lang="fr-FR" b="1" sz="1100"/>
+            <a:t>Prix moyen €/m² par typologie — 2024 vs 2025</a:t>
+          </a:r>
+        </a:p>
+      </c:rich></c:tx>
+      <c:overlay val="0"/>
+    </c:title>
+    <c:autoTitleDeleted val="0"/>
+    <c:plotArea>
+      <c:layout/>
+      <c:barChart>
+        <c:barDir val="col"/>
+        <c:grouping val="clustered"/>
+        <c:varyColors val="0"/>
+
+        <c:ser>
+          <c:idx val="0"/><c:order val="0"/>
+          <c:tx><c:strRef>
+            <c:f>'Comparatif 2024-2025'!$C$1</c:f>
+            <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Prix moy. 2024 €/m²</c:v></c:pt></c:strCache>
+          </c:strRef></c:tx>
+          <c:spPr>
+            <a:solidFill><a:srgbClr val="1E3A5F"/></a:solidFill>
+            <a:ln><a:noFill/></a:ln>
+          </c:spPr>
+          <c:dLbls>
+            <c:numFmt formatCode="#,##0" sourceLinked="0"/>
+            <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+            <c:txPr><a:bodyPr/><a:lstStyle/>
+              <a:p><a:pPr><a:defRPr sz="750" b="0" lang="fr-FR"/></a:pPr></a:p>
+            </c:txPr>
+            <c:showLegendKey val="0"/>
+            <c:showVal val="1"/>
+            <c:showCatName val="0"/>
+            <c:showSerName val="0"/>
+            <c:showPercent val="0"/>
+            <c:showBubbleSize val="0"/>
+          </c:dLbls>
+          <c:cat><c:strRef>
+            <c:f>'Comparatif 2024-2025'!$A$2:$A$7</c:f>
+            <c:strCache>
+              <c:ptCount val="6"/>
+              <c:pt idx="0"><c:v>T1</c:v></c:pt>
+              <c:pt idx="1"><c:v>T2</c:v></c:pt>
+              <c:pt idx="2"><c:v>T3</c:v></c:pt>
+              <c:pt idx="3"><c:v>T4</c:v></c:pt>
+              <c:pt idx="4"><c:v>T5+</c:v></c:pt>
+              <c:pt idx="5"><c:v>TOTAL</c:v></c:pt>
+            </c:strCache>
+          </c:strRef></c:cat>
+          <c:val><c:numRef>
+            <c:f>'Comparatif 2024-2025'!$C$2:$C$7</c:f>
+            <c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="6"/></c:numCache>
+          </c:numRef></c:val>
+        </c:ser>
+
+        <c:ser>
+          <c:idx val="1"/><c:order val="1"/>
+          <c:tx><c:strRef>
+            <c:f>'Comparatif 2024-2025'!$E$1</c:f>
+            <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>Prix moy. 2025 €/m²</c:v></c:pt></c:strCache>
+          </c:strRef></c:tx>
+          <c:spPr>
+            <a:solidFill><a:srgbClr val="C9A227"/></a:solidFill>
+            <a:ln><a:noFill/></a:ln>
+          </c:spPr>
+          <c:dLbls>
+            <c:numFmt formatCode="#,##0" sourceLinked="0"/>
+            <c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>
+            <c:txPr><a:bodyPr/><a:lstStyle/>
+              <a:p><a:pPr><a:defRPr sz="750" b="0" lang="fr-FR"/></a:pPr></a:p>
+            </c:txPr>
+            <c:showLegendKey val="0"/>
+            <c:showVal val="1"/>
+            <c:showCatName val="0"/>
+            <c:showSerName val="0"/>
+            <c:showPercent val="0"/>
+            <c:showBubbleSize val="0"/>
+          </c:dLbls>
+          <c:cat><c:strRef>
+            <c:f>'Comparatif 2024-2025'!$A$2:$A$7</c:f>
+            <c:strCache>
+              <c:ptCount val="6"/>
+              <c:pt idx="0"><c:v>T1</c:v></c:pt>
+              <c:pt idx="1"><c:v>T2</c:v></c:pt>
+              <c:pt idx="2"><c:v>T3</c:v></c:pt>
+              <c:pt idx="3"><c:v>T4</c:v></c:pt>
+              <c:pt idx="4"><c:v>T5+</c:v></c:pt>
+              <c:pt idx="5"><c:v>TOTAL</c:v></c:pt>
+            </c:strCache>
+          </c:strRef></c:cat>
+          <c:val><c:numRef>
+            <c:f>'Comparatif 2024-2025'!$E$2:$E$7</c:f>
+            <c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="6"/></c:numCache>
+          </c:numRef></c:val>
+        </c:ser>
+
+        <c:axId val="3141592"/>
+        <c:axId val="3141593"/>
+      </c:barChart>
+
+      <c:catAx>
+        <c:axId val="3141592"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="b"/>
+        <c:numFmt formatCode="General" sourceLinked="0"/>
+        <c:majorTickMark val="none"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:spPr><a:ln><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln></c:spPr>
+        <c:txPr><a:bodyPr/><a:lstStyle/>
+          <a:p><a:pPr><a:defRPr lang="fr-FR" sz="900"/></a:pPr></a:p>
+        </c:txPr>
+        <c:crossAx val="3141593"/>
+        <c:auto val="1"/>
+        <c:lblAlgn val="ctr"/>
+        <c:lblOffset val="100"/>
+        <c:noMultiLvlLbl val="0"/>
+      </c:catAx>
+
+      <c:valAx>
+        <c:axId val="3141593"/>
+        <c:scaling><c:orientation val="minMax"/></c:scaling>
+        <c:delete val="0"/>
+        <c:axPos val="l"/>
+        <c:numFmt formatCode="#,##0" sourceLinked="0"/>
+        <c:majorTickMark val="out"/>
+        <c:minorTickMark val="none"/>
+        <c:tickLblPos val="nextTo"/>
+        <c:spPr><a:ln><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln></c:spPr>
+        <c:txPr><a:bodyPr/><a:lstStyle/>
+          <a:p><a:pPr><a:defRPr lang="fr-FR" sz="900"/></a:pPr></a:p>
+        </c:txPr>
+        <c:crossAx val="3141592"/>
+        <c:crossBetween val="between"/>
+      </c:valAx>
+    </c:plotArea>
+
+    <c:legend>
+      <c:legendPos val="b"/>
+      <c:overlay val="0"/>
+      <c:txPr><a:bodyPr/><a:lstStyle/>
+        <a:p><a:pPr><a:defRPr lang="fr-FR" sz="900"/></a:pPr></a:p>
+      </c:txPr>
+    </c:legend>
+    <c:plotVisOnly val="1"/>
+    <c:dispBlanksAs val="gap"/>
+    <c:showDLblsOverMax val="0"/>
+  </c:chart>
+  <c:spPr>
+    <a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill>
+    <a:ln w="9525"><a:solidFill><a:srgbClr val="D9D9D9"/></a:solidFill></a:ln>
+  </c:spPr>
+</c:chartSpace>`;
+}
+
+function buildDrawingXml(): string {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr
+  xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+  xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+  <xdr:twoCellAnchor editAs="oneCell">
+    <xdr:from>
+      <xdr:col>0</xdr:col><xdr:colOff>0</xdr:colOff>
+      <xdr:row>9</xdr:row><xdr:rowOff>0</xdr:rowOff>
+    </xdr:from>
+    <xdr:to>
+      <xdr:col>11</xdr:col><xdr:colOff>0</xdr:colOff>
+      <xdr:row>29</xdr:row><xdr:rowOff>0</xdr:rowOff>
+    </xdr:to>
+    <xdr:graphicFrame macro="">
+      <xdr:nvGraphicFramePr>
+        <xdr:cNvPr id="2" name="Graphique 1"/>
+        <xdr:cNvGraphicFramePr/>
+      </xdr:nvGraphicFramePr>
+      <xdr:xfrm>
+        <a:off x="0" y="0"/>
+        <a:ext cx="0" cy="0"/>
+      </xdr:xfrm>
+      <a:graphic>
+        <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">
+          <c:chart r:id="rId1"/>
+        </a:graphicData>
+      </a:graphic>
+    </xdr:graphicFrame>
+    <xdr:clientData/>
+  </xdr:twoCellAnchor>
+</xdr:wsDr>`;
+}
+
+const DRAWING_CHART_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+    Target="../charts/chart1.xml"/>
+</Relationships>`;
+
+const SHEET_DRAWING_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing"
+    Target="../drawings/drawing1.xml"/>
+</Relationships>`;
+
+async function injectNativeChart(buffer: Buffer): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(buffer);
+
+  // ── 1. Trouver le fichier worksheet de "Comparatif 2024-2025" ────────────────
+  const wbXml = await zip.file('xl/workbook.xml')?.async('text') ?? '';
+  // Extraire r:id de la feuille cible
+  const sheetElt = wbXml.split('<sheet ').find((s) => s.includes('name="Comparatif 2024-2025"'));
+  const rId = sheetElt?.match(/r:id="([^"]+)"/)?.[1];
+
+  const relsXml = await zip.file('xl/_rels/workbook.xml.rels')?.async('text') ?? '';
+  const target = rId
+    ? relsXml.match(new RegExp(`Id="${rId}"[^>]*Target="([^"]+)"`))?.[1]
+    : undefined;
+
+  const sheetFile = target ? `xl/${target}` : 'xl/worksheets/sheet7.xml';
+  const sheetFileName = sheetFile.split('/').pop()!;
+
+  // ── 2. Modifier le XML de la feuille : ajouter <drawing r:id="rId1"/> ────────
+  let sheetXml = await zip.file(sheetFile)?.async('text') ?? '';
+
+  // S'assurer que le namespace r: est déclaré
+  if (!sheetXml.includes('xmlns:r=')) {
+    sheetXml = sheetXml.replace(
+      '<worksheet ',
+      '<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+    );
+  }
+  // Injecter la référence au drawing juste avant </worksheet>
+  sheetXml = sheetXml.replace('</worksheet>', '<drawing r:id="rId1"/></worksheet>');
+  zip.file(sheetFile, sheetXml);
+
+  // ── 3. Ajouter les fichiers XML du graphique ──────────────────────────────────
+  zip.file(`xl/worksheets/_rels/${sheetFileName}.rels`, SHEET_DRAWING_RELS);
+  zip.file('xl/drawings/drawing1.xml', buildDrawingXml());
+  zip.file('xl/drawings/_rels/drawing1.xml.rels', DRAWING_CHART_RELS);
+  zip.file('xl/charts/chart1.xml', buildChartXml());
+
+  // ── 4. Mettre à jour [Content_Types].xml ────────────────────────────────────
+  let ct = await zip.file('[Content_Types].xml')?.async('text') ?? '';
+  const insertBefore = '</Types>';
+  const additions: string[] = [];
+  if (!ct.includes('chart1.xml')) {
+    additions.push(
+      '<Override PartName="/xl/charts/chart1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>'
+    );
+  }
+  if (!ct.includes('drawing1.xml')) {
+    additions.push(
+      '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>'
+    );
+  }
+  if (additions.length > 0) {
+    ct = ct.replace(insertBefore, additions.join('\n') + '\n' + insertBefore);
+    zip.file('[Content_Types].xml', ct);
+  }
+
+  const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  return Buffer.from(buf);
+}
+
+// ── Export principal ──────────────────────────────────────────────────────────
 
 export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
@@ -131,9 +505,7 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
   }
   for (const [label, val] of synthRows) {
     const row = wsSynthese.addRow([label, val]);
-    if (label) {
-      row.getCell(1).font = { bold: true };
-    }
+    if (label) row.getCell(1).font = { bold: true };
     row.height = 18;
   }
   wsSynthese.getColumn(1).width = 32;
@@ -156,7 +528,6 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
     ]).height = 16;
   }
 
-  // Note méthodologique sous le tableau
   wsTypo.addRow([]);
   const noteRow = wsTypo.addRow([
     'Note méthodologique',
@@ -193,7 +564,6 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
     metaRows.push(['Filtre final', 'id_parcelle.slice(0,10) dans la liste des sections retenues']);
     metaRows.push(['', '']);
 
-    // Communes candidates (toutes détectées dans le rayon)
     const communesIncluesSet = new Set(pc.communes_incluses.map((c) => c.code));
     metaRows.push(['Communes candidates (rayon)', `${pc.communes_candidates.length} commune(s) détectée(s)`]);
     for (const c of pc.communes_candidates) {
@@ -208,21 +578,21 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
     metaRows.push(['', '']);
 
     metaRows.push(['Sections retenues', pc.sections_autorisees.length.toString()]);
-    for (const s of pc.sections_autorisees) {
-      const commune = s.nom_commune !== s.code_commune ? `${s.nom_commune} (${s.code_commune})` : s.code_commune;
+    for (const sec of pc.sections_autorisees) {
+      const commune = sec.nom_commune !== sec.code_commune ? `${sec.nom_commune} (${sec.code_commune})` : sec.code_commune;
       metaRows.push([
-        `  ✓ Section ${s.section_complete}`,
-        `${s.raison} — ${commune} — dist. min ${s.distance_min_m} m — ${s.nb_transactions} tx DVF`,
+        `  ✓ Section ${sec.section_complete}`,
+        `${sec.raison} — ${commune} — dist. min ${sec.distance_min_m} m — ${sec.nb_transactions} tx DVF`,
       ]);
     }
     if (pc.sections_candidates_exclues.length > 0) {
       metaRows.push(['', '']);
       metaRows.push(['Sections candidates non retenues', pc.sections_candidates_exclues.length.toString()]);
-      for (const s of pc.sections_candidates_exclues) {
-        const commune = s.nom_commune !== s.code_commune ? `${s.nom_commune} (${s.code_commune})` : s.code_commune;
+      for (const sec of pc.sections_candidates_exclues) {
+        const commune = sec.nom_commune !== sec.code_commune ? `${sec.nom_commune} (${sec.code_commune})` : sec.code_commune;
         metaRows.push([
-          `  ✗ Section ${s.section_complete}`,
-          `${s.raison_exclusion} — ${commune} — dist. min ${s.distance_min_m} m — ${s.nb_transactions} tx DVF`,
+          `  ✗ Section ${sec.section_complete}`,
+          `${sec.raison_exclusion} — ${commune} — dist. min ${sec.distance_min_m} m — ${sec.nb_transactions} tx DVF`,
         ]);
       }
     }
@@ -248,6 +618,12 @@ export async function generateExcel(result: AnalysisResult): Promise<Buffer> {
   wsMeta.getColumn(1).width = 35;
   wsMeta.getColumn(2).width = 80;
 
-  const buf = await wb.xlsx.writeBuffer();
-  return Buffer.from(buf);
+  // ── Onglet 7 : Comparatif 2024-2025 ─────────────────────────────────────────
+  const comparatif = computeComparatif2024vs2025(result.transactions_retenues);
+  addComparatifSheet(wb, comparatif);
+
+  // ── Génération du buffer ExcelJS puis injection du graphique natif ───────────
+  const rawBuf = Buffer.from(await wb.xlsx.writeBuffer());
+  return injectNativeChart(rawBuf);
 }
+
