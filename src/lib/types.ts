@@ -143,6 +143,18 @@ export interface AnalysisResult {
   annees_manquantes: number[];
 }
 
+export type TypologieComparatif = Typologie | 'TOTAL';
+
+export interface ComparatifAnnuelRow {
+  typologie: TypologieComparatif;
+  nb_2024: number;
+  prix_moy_2024: number | null;
+  nb_2025: number;
+  prix_moy_2025: number | null;
+  ecart_eur: number | null;
+  ecart_pct: number | null;
+}
+
 export interface AnalyzeRequest {
   adresse: string;
   rayon_m: number;
